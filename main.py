@@ -1,8 +1,9 @@
-import os, re, asyncio, glob, shutil, tempfile
+import os, re, html, asyncio, glob, shutil, tempfile
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from yt_dlp import YoutubeDL
+from aiohttp import web
 from shazamio import Shazam
 
 TOKEN = os.environ["BOT_TOKEN"]
@@ -53,9 +54,20 @@ async def send_song(msg: Message, query, title=None, artist=None):
 
 @dp.message(CommandStart())
 async def start(m: Message):
+    name = html.escape(m.from_user.first_name or "do'stim")
     await m.answer(
-        "Havola yuboring (Instagram, YouTube, TikTok, Snapchat, Pinterest, CapCut) "
-        "yoki qo'shiq nomini yozing."
+        f"👋 <b>Salom, {name}!</b>\n\n"
+        "🚀 Men — <b>Media Downloader Bot</b>. Sevimli videolaringiz va qo'shiqlaringizni "
+        "bir zumda yuklab beraman!\n\n"
+        "📥 <b>Qaysi saytlardan yuklayman?</b>\n"
+        "▫️ Instagram · YouTube · TikTok\n"
+        "▫️ Snapchat · Pinterest · CapCut\n\n"
+        "🎵 <b>Videodagi musiqa qiziqtirdimi?</b>\n"
+        "Videoning tagidagi <b>«Musiqani topish»</b> tugmasini bosing — "
+        "men qo'shiq nomini aniqlayman va uni sizga audio qilib yuboraman!\n\n"
+        "🔎 Qo'shiq nomini yozsangiz ham, darrov topib beraman.\n\n"
+        "👇 <b>Boshlash uchun havolani shu yerga yuboring!</b>",
+        parse_mode="HTML",
     )
 
 
@@ -115,7 +127,17 @@ async def find_music(c: CallbackQuery):
         shutil.rmtree(folder, ignore_errors=True)
 
 
+async def health(request):
+    return web.Response(text="ok")
+
+
 async def main():
+    # Render Web Service port ochiq bo'lishini talab qiladi
+    app = web.Application()
+    app.router.add_get("/", health)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, "0.0.0.0", int(os.environ.get("PORT", 10000))).start()
     await dp.start_polling(bot)
 
 
