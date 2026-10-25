@@ -43,14 +43,12 @@ def get_media_links(message):
                             f"🔗 <b>To'g'ridan-to'g'ri havolalar:</b>\n"
             
             count = 0
-            # Eng yaxshi ishlaydigan havolalarni saralab chiq chiqaramiz
             for f in formats:
                 if f.get('url') and f.get('ext') in ['mp4', 'm4a', 'mp3']:
                     quality = f.get('format_note') or f.get('resolution') or 'Standart'
                     ext = f.get('ext')
                     file_url = f.get('url')
                     
-                    # Takroriy va sifatsiz havolalarni qisqartirish uchun
                     if ext == 'mp4' and quality != 'unknown':
                         response_text += f"• <a href='{file_url}'>Video ({quality} - {ext})</a>\n"
                         count += 1
@@ -58,13 +56,12 @@ def get_media_links(message):
                         response_text += f"• <a href='{file_url}'>Audio ({ext})</a>\n"
                         count += 1
                         
-                    if count >= 6: # Juda ko'p bo'lib ketmasligi uchun cheklaymiz
+                    if count >= 6:
                         break
 
             if count == 0:
                 response_text += "Kechirasiz, to'g'ridan-to'g'ri havola topilmadi."
 
-        # Xabarni yuborish (HTML formatda)
         bot.edit_message_text(
             response_text,
             message.chat.id,
@@ -86,4 +83,6 @@ def echo_all(message):
 
 if __name__ == '__main__':
     print("Bot to'xtovsiz ishga tushmoqda...")
+    # Eski webhook'ni majburiy o'chirish (409 xatoligini oldini oladi)
+    bot.remove_webhook()
     bot.infinity_polling(skip_pending=True)
