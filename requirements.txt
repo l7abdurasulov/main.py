@@ -1,1 +1,3 @@
-pip install pyTelegramBotAPI yt-dlp
+pip install pyTelegramBotAPI
+yt-dlp
+flask
