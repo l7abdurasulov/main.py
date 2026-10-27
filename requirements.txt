@@ -1,4 +1,1 @@
-aiogram
-yt-dlp
-shazamio
-imageio-ffmpeg
+pip install pyTelegramBotAPI yt-dlp
