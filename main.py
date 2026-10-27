@@ -1,129 +1,126 @@
 import os
-import asyncio
-import logging
+import telebot
 import yt_dlp
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
-from aiogram.types import FSInputFile
-from shazamio import Shazam
 
-# Telegram bot tokeningizni kiriting
-BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN_HERE"
+# Bot tokeningizni shu yerga yozing
+TOKEN = "SIZNING_BOT_TOKENINGIZ"
+bot = telebot.TeleBot(TOKEN)
 
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
-logging.basicConfig(level=logging.INFO)
-
-# Vaqtinchalik fayllar saqlanadigan papka
+# Yuklamalar uchun vaqtinchalik papka
 DOWNLOAD_DIR = "downloads"
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+if not os.path.exists(DOWNLOAD_DIR):
+  os.makedirs(DOWNLOAD_DIR)
 
 
-@dp.message(Command("start"))
-async def start_handler(message: types.Message):
-    await message.answer(
-        "👋 Salom! Men Instagram / YouTube havolalarini qabul qilaman.\n\n"
-        "Manga Instagram Reel yoki post havolasini yuboring, men videoni yuklab beraman "
-        "va ichidagi musiqani topib beraman!"
+@bot.message_handler(commands=["start"])
+def send_welcome(message):
+  bot.reply_to(
+      message,
+      "Assalomu alaykum! 🎵\n\n"
+      "Menga:\n"
+      "1. **Instagram** yoki **YouTube** havolasini yuboring — video yuklab beraman.\n"
+      "2. **Qo'shiq nomi, ijrochi yoki matn parchasini** yuboring — musiqani topib beraman.",
+      parse_mode="Markdown",
+  )
+
+
+@bot.message_handler(func=lambda message: True)
+def handle_message(message):
+  text = message.text.strip()
+  chat_id = message.chat.id
+
+  # 1. Instagram yoki YouTube havolasi kelganini tekshirish
+  if "instagram.com" in text or "youtube.com" in text or "youtu.be" in text:
+    msg = bot.send_message(
+        chat_id, "⏳ Havola tekshirilmoqda va yuklab olinmoqda..."
     )
-
-
-async def download_media(url: str, user_id: int):
-    """Instagram havolasidan video va audioni yuklab oladi."""
-    base_path = os.path.join(DOWNLOAD_DIR, f"{user_id}")
-
-    ydl_opts_video = {
-        'format': 'bestvideo+bestaudio/best',
-        'outtmpl': f'{base_path}_video.%(ext)s',
-        'quiet': True,
-        'no_warnings': True,
-    }
-
-    ydl_opts_audio = {
-        'format': 'bestaudio/best',
-        'outtmpl': f'{base_path}_audio.%(ext)s',
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
-        'quiet': True,
-        'no_warnings': True,
-    }
-
-    loop = asyncio.get_event_loop()
-
-    # Video yuklab olish
-    with yt_dlp.YoutubeDL(ydl_opts_video) as ydl:
-        await loop.run_in_executor(None, lambda: ydl.download([url]))
-
-    # Audio yuklab olish (Shazam uchun)
-    with yt_dlp.YoutubeDL(ydl_opts_audio) as ydl:
-        await loop.run_in_executor(None, lambda: ydl.download([url]))
-
-    video_file = None
-    for file in os.listdir(DOWNLOAD_DIR):
-        if file.startswith(f"{user_id}_video"):
-            video_file = os.path.join(DOWNLOAD_DIR, file)
-            break
-
-    audio_file = os.path.join(DOWNLOAD_DIR, f"{user_id}_audio.mp3")
-
-    return video_file, audio_file
-
-
-@dp.message(F.text.startswith("http"))
-async def process_link(message: types.Message):
-    url = message.text.strip()
-    status_msg = await message.answer("🔄 Video va audio yuklanmoqda, kuting...")
-
     try:
-        user_id = message.from_user.id
-        video_path, audio_path = await download_media(url, user_id)
+      ydl_opts = {
+          "format": "best",
+          "outtmpl": os.path.join(DOWNLOAD_DIR, "%(id)s.%(ext)s"),
+          "noplaylist": True,
+      }
 
-        # 1. Videoni Telegram'ga yuborish
-        if video_path and os.path.exists(video_path):
-            video_input = FSInputFile(video_path)
-            await message.answer_video(video=video_input, caption="📹 Yuklangan video")
+      with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(text, download=True)
+        filename = ydl.prepare_filename(info)
 
-        # 2. Shazam orqali musiqani aniqlash
-        await status_msg.edit_text("🎵 Qo'shiq aniqlanmoqda...")
-        shazam = Shazam()
-        track_info = await shazam.recognize(audio_path)
+      bot.edit_message_text(
+          "📤 Video yuborilmoqda...", chat_id, msg.message_id
+      )
 
-        track = track_info.get("track")
-        if track:
-            title = track.get("title", "Noma'lum")
-            artist = track.get("subtitle", "Noma'lum")
+      with open(filename, "rb") as video_file:
+        bot.send_video(chat_id, video_file)
 
-            caption = (
-                f"🎵 Qo'shiq topildi!\n\n"
-                f"📌 Nomi: {title}\n"
-                f"🎤 Ijrochi: {artist}"
-            )
-            await message.answer(caption, parse_mode="Markdown")
-        else:
-            await message.answer("🎵 Musiqa aniqlanmadi.")
+      # Faylni o'chirib tashlash (server xotirasi to'lib qolmasligi uchun)
+      if os.path.exists(filename):
+        os.remove(filename)
 
-        await status_msg.delete()
+      bot.delete_message(chat_id, msg.message_id)
 
     except Exception as e:
-        logging.error(f"Xatolik: {e}")
-        await status_msg.edit_text("❌ Videoni yuklab olishda yoki musiqani aniqlashda xatolik yuz berdi.")
+      bot.edit_message_text(
+          f"❌ Videoni yuklab olishda xatolik yuz berdi: {str(e)}",
+          chat_id,
+          msg.message_id,
+      )
 
-    finally:
-        # Ishlatib bo'lingan fayllarni o'chirib tashlash
-        user_id = message.from_user.id
-        for file in os.listdir(DOWNLOAD_DIR):
-            if file.startswith(str(user_id)):
-                try:
-                    os.remove(os.path.join(DOWNLOAD_DIR, file))
-                except Exception:
-                    pass
+  # 2. Matn (Musiqa nomi yoki parchasi) kelgan bo'lsa
+  else:
+    msg = bot.send_message(
+        chat_id, "🔍 Musiqa qidirilmoqda va yuklab olinmoqda..."
+    )
+    try:
+      # YouTube orqali matn bo'yicha qidirish (Spotify vazifasini bajaradi)
+      search_query = f"ytsearch1:{text}"
+
+      ydl_opts = {
+          "format": "bestaudio/best",
+          "postprocessors": [{
+              "key": "FFmpegExtractAudio",
+              "preferredcodec": "mp3",
+              "preferredquality": "192",
+          }],
+          "outtmpl": os.path.join(DOWNLOAD_DIR, "%(id)s.%(ext)s"),
+          "noplaylist": True,
+      }
+
+      with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(search_query, download=True)
+        if "entries" in info:
+          info = info["entries"][0]
+
+        filename = ydl.prepare_filename(info)
+        base, _ = os.path.splitext(filename)
+        mp3_filename = base + ".mp3"
+
+      bot.edit_message_text(
+          "🎵 Musiqa yuborilmoqda...", chat_id, msg.message_id
+      )
+
+      with open(mp3_filename, "rb") as audio_file:
+        bot.send_audio(
+            chat_id,
+            audio_file,
+            title=info.get("title", "Musiqa"),
+            performer=info.get("uploader", "Noma'lum artist"),
+        )
+
+      # Faylni o'chirish
+      if os.path.exists(mp3_filename):
+        os.remove(mp3_filename)
+
+      bot.delete_message(chat_id, msg.message_id)
+
+    except Exception as e:
+      bot.edit_message_text(
+          f"❌ Musiqani topib bo'lmadi yoki xatolik yuz berdi: {str(e)}",
+          chat_id,
+          msg.message_id,
+      )
 
 
-async def main():
-    await dp.start_polling(bot)
-
-if name == "main":
-    asyncio.run(main())
+# Botni ishga tushirish
+if __name__ == "__main__":
+  print("Bot ishga tushdi...")
+  bot.infinity_polling()
